@@ -28,3 +28,15 @@ CREATE TABLE IF NOT EXISTS comments (
   CONSTRAINT fk_comments_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_comments_parent FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- One-time codes. We store a hash of the code, never the code itself.
+CREATE TABLE IF NOT EXISTS otps (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  phone VARCHAR(11) NOT NULL,
+  code_hash CHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  used_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_otps_phone_created (phone, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
