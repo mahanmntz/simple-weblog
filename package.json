@@ -1,0 +1,19 @@
+{
+  "name": "simple-weblog",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mahanmntz/simple-weblog.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mahanmntz/simple-weblog/issues"
+  },
+  "homepage": "https://github.com/mahanmntz/simple-weblog#readme",
+  "description": ""
+}
