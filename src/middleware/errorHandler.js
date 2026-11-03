@@ -1,21 +1,19 @@
 function errorHandler(err, req, res, next) {
   console.error(err);
 
-  if (err.code === 11000) {
-    const fields = Object.keys(err.keyValue);
-    return res.status(409).json({ error: 'Duplicate value', fields });
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON' });
   }
 
-  if (err.name === 'ValidationError') {
-    const details = Object.values(err.errors).map((e) => e.message);
-    return res.status(400).json({ error: 'Validation failed', details });
+  if (err.code === 'ER_DUP_ENTRY') {
+    const field = /for key '(?:\w+\.)?(\w+)'/.exec(err.sqlMessage)?.[1];
+    return res.status(409).json({ error: 'Duplicate value', field });
   }
-  if (err.name === 'CastError') {
-    return res.status(400).json({ error: `Invalid ${err.path}` });
+
+  if (err.code === 'ER_NO_REFERENCED_ROW_2') {
+    return res.status(400).json({ error: 'Referenced record does not exist' });
   }
-  if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({ error: 'Invalid JSON payload' });
-  }
+
   return res.status(500).json({ error: 'Internal server error' });
 }
 
