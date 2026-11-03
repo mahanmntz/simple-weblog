@@ -15,6 +15,8 @@ app.get('/health/db', async (req, res) => {
 })
 dotenv.config();
 
+
+
 app.use(notFound);
 app.use(errorHandler);
 
