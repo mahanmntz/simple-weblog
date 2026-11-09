@@ -2,9 +2,8 @@ const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
-
 const router = express.Router();
-
+const { authenticate }  = require('../middleware/auth');
 router.post('/request-otp', async (req, res) => {
     const { phone } = req.body;
 
@@ -121,6 +120,11 @@ router.post('/verify-otp', async (req, res) => {
     );
 
     res.json({ token });
+});
+
+
+router.get('/me', authenticate, (req, res) => {
+    res.json({ user: req.user });
 });
 
 module.exports = router;
