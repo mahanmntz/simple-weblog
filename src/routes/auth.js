@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
+const jwt = require('jsonwebtoken');
 
 const router = express.Router();
 
@@ -45,6 +46,81 @@ router.post('/request-otp', async (req, res) => {
     }
 
     res.json({ message: 'OTP sent successfully' });
+});
+
+router.post('/verify-otp', async (req, res) => {
+    const { phone, code } = req.body;
+
+    // 1. Basic validation
+    if (!phone || !/^09\d{9}$/.test(phone) || !code || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: 'Invalid or expired code' });
+    }
+
+    // 2. Consume one attempt atomically (max 5 attempts, must be active and unused)
+    const [updateResult] = await pool.query(
+        `UPDATE otps 
+         SET attempts = attempts + 1 
+         WHERE phone = ? AND used_at IS NULL AND expires_at > NOW() AND attempts < 5 
+         ORDER BY id DESC LIMIT 1`,
+        [phone]
+    );
+
+    if (updateResult.affectedRows === 0) {
+        return res.status(400).json({ error: 'Invalid or expired code' });
+    }
+
+    // 3. Fetch the latest active OTP hash
+    const [rows] = await pool.query(
+        `SELECT id, code_hash FROM otps 
+         WHERE phone = ? AND used_at IS NULL AND expires_at > NOW() 
+         ORDER BY id DESC LIMIT 1`,
+        [phone]
+    );
+
+    if (rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid or expired code' });
+    }
+
+    const otp = rows[0];
+
+    // 4. Compare HMAC hash
+    const inputHash = crypto
+        .createHmac('sha256', process.env.OTP_SECRET)
+        .update(String(code))
+        .digest('hex');
+
+    if (inputHash !== otp.code_hash) {
+        return res.status(400).json({ error: 'Invalid or expired code' });
+    }
+
+    // 5. Mark OTP as used so it cannot be used again
+    await pool.query(
+        `UPDATE otps SET used_at = NOW() WHERE id = ? AND used_at IS NULL`,
+        [otp.id]
+    );
+
+    // 6. Ensure user exists (insert if new, ignore if existing)
+    await pool.query(
+        `INSERT INTO users (phone) VALUES (?) 
+         ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`,
+        [phone]
+    );
+
+    // 7. Get user id and role strictly from DB
+    const [users] = await pool.query(
+        `SELECT id, role FROM users WHERE phone = ?`,
+        [phone]
+    );
+    const user = users[0];
+
+    // 8. Sign JWT (HS256, 1h)
+    const token = jwt.sign(
+        { sub: user.id, role: user.role },
+        process.env.JWT_SECRET,
+        { algorithm: 'HS256', expiresIn: '1h' }
+    );
+
+    res.json({ token });
 });
 
 module.exports = router;
