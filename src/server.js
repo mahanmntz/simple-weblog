@@ -4,7 +4,7 @@ const pool = require('./config/db');
 const PORT = process.env.PORT || 3000;
 
 
-for (const name of ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET']) {
+for (const name of ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET', 'OTP_SECRET']) {
     if (!process.env[name]) throw new Error(`${name} is not set`);
 }
 
