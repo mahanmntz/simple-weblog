@@ -171,4 +171,99 @@ router.get('/', async (req, res) => {
     });
 });
 
+// Helper: Convert flat comments array into a nested tree structure
+function buildCommentTree(comments, parentId = null) {
+    const branch = [];
+    for (const comment of comments) {
+        if (comment.parent_id === parentId) {
+            const replies = buildCommentTree(comments, comment.id);
+            branch.push({
+                ...comment,
+                replies
+            });
+        }
+    }
+    return branch;
+}
+
+// POST /posts/:postId/comments - Add a comment (or reply) to a post
+router.post('/:postId/comments', authenticate, async (req, res) => {
+    const { postId } = req.params;
+    const { body, parent_id } = req.body;
+
+    // 1. Validate integer IDs
+    if (!/^\d+$/.test(postId)) {
+        return res.status(400).json({ error: 'Invalid post ID' });
+    }
+    const parentIdValue = parent_id !== undefined && parent_id !== null ? Number(parent_id) : null;
+    if (parentIdValue !== null && (!Number.isInteger(parentIdValue) || parentIdValue < 1)) {
+        return res.status(400).json({ error: 'Invalid parent comment ID' });
+    }
+
+    // 2. Validate comment content
+    if (!body || typeof body !== 'string' || !body.trim()) {
+        return res.status(400).json({ error: 'Comment body is required' });
+    }
+
+    // 3. Verify post exists
+    const [posts] = await pool.query(`SELECT id FROM posts WHERE id = ?`, [postId]);
+    if (posts.length === 0) {
+        return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // 4. If parent_id is provided, verify it belongs to the same post
+    if (parentIdValue !== null) {
+        const [parents] = await pool.query(
+            `SELECT id FROM comments WHERE id = ? AND post_id = ?`,
+            [parentIdValue, postId]
+        );
+        if (parents.length === 0) {
+            return res.status(400).json({ error: 'Parent comment not found on this post' });
+        }
+    }
+
+    // 5. Insert comment
+    const [result] = await pool.query(
+        `INSERT INTO comments (post_id, user_id, parent_id, body) VALUES (?, ?, ?, ?)`,
+        [postId, req.user.id, parentIdValue, body.trim()]
+    );
+
+    res.status(201).json({
+        id: result.insertId,
+        post_id: Number(postId),
+        user_id: req.user.id,
+        parent_id: parentIdValue,
+        body: body.trim()
+    });
+});
+
+// GET /posts/:postId/comments - Get nested comments tree for a post
+router.get('/:postId/comments', async (req, res) => {
+    const { postId } = req.params;
+
+    if (!/^\d+$/.test(postId)) {
+        return res.status(400).json({ error: 'Invalid post ID' });
+    }
+
+    // 1. Verify post exists
+    const [posts] = await pool.query(`SELECT id FROM posts WHERE id = ?`, [postId]);
+    if (posts.length === 0) {
+        return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // 2. Fetch all comments for this post
+    const [comments] = await pool.query(
+        `SELECT id, post_id, user_id, parent_id, body 
+         FROM comments 
+         WHERE post_id = ? 
+         ORDER BY id ASC`,
+        [postId]
+    );
+
+    // 3. Transform flat list into nested tree
+    const tree = buildCommentTree(comments, null);
+
+    res.json({ comments: tree });
+});
+
 module.exports = router;
