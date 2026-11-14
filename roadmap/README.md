@@ -3,7 +3,7 @@
 # 🗺️ simple-weblog — Build Roadmap
 
 **A step-by-step roadmap of the whole project, commit by commit.**
-Node.js · Express 5 · MySQL · OTP login · JWT · Posts · Nested comments
+Node.js · Express 5 · MySQL · Sequelize ORM · OTP login · JWT · Posts · Nested comments
 
 </div>
 
@@ -23,6 +23,9 @@ Every step page has the same layout:
 | 🛠️ **Walkthrough** | Numbered actions with code boxes |
 | ✅ **Verify** | A command to prove it works |
 | ⚠️ **Gotchas** | Mistakes made along the way, so you can skip them |
+
+> [!NOTE]
+> **Two versions of the data layer.** Steps 00 to 12 build the API with raw `mysql2` queries, so you see exactly what SQL runs. Steps 13 to 16 migrate that same API to the **Sequelize ORM**. Endpoints, responses and the database schema don't change. Stop at step 12 if you want the raw-SQL version.
 
 > [!TIP]
 > Don't copy blindly in a live session. Read the **Goal**, type the code yourself, then use the **Verify** block to check.
@@ -45,7 +48,11 @@ Every step page has the same layout:
 | 09 | [Posts CRUD](./09-posts-crud.md) | `cebd2ce` | create / read / update / delete posts |
 | 10 | [Posts list: pagination + search](./10-posts-list-pagination-search.md) | `cebd2ce` | `GET /posts?page=&limit=&q=` |
 | 11 | [Nested comments](./11-nested-comments.md) | `a125b74` | threaded comments on posts |
-| 12 | [Mount posts router](./12-mount-posts-router.md) | *uncommitted* | `/posts` wired into `app.js` |
+| 12 | [Mount posts router](./12-mount-posts-router.md) | included in the ORM commit | `/posts` wired into `app.js` |
+| 13 | [ORM setup + models](./13-orm-setup-and-models.md) | ORM migration | Sequelize instance, 4 models, associations |
+| 14 | [Auth routes with ORM](./14-orm-auth-routes.md) | ORM migration | OTP + JWT login rewritten with models |
+| 15 | [Posts routes with ORM](./15-orm-posts-routes.md) | ORM migration | posts, list, comments rewritten with models |
+| 16 | [ORM errors + wiring](./16-orm-errors-and-wiring.md) | ORM migration | Sequelize-aware errors, `app.js`/`server.js` switched |
 | 🏁 | [Final reference](./99-final-reference.md) | — | Tree, API table, env, curl script, known quirks |
 
 ---
@@ -60,8 +67,9 @@ flowchart LR
     A --> H[/health/]
     R1 --> M[authenticate]
     R2 --> M
-    R1 --> DB[(MySQL pool)]
-    R2 --> DB
+    R1 --> MO[Sequelize models]
+    R2 --> MO
+    MO --> DB[(MySQL)]
     A --> NF[notFound 404]
     NF --> EH[errorHandler]
 ```
@@ -89,7 +97,8 @@ sequenceDiagram
 | --- | --- | --- |
 | Runtime | Node.js (uses `node --watch`, so Node 18+) | No nodemon needed |
 | Web framework | `express@^5` | Async handlers forward rejected promises to the error handler |
-| Database | `mysql2/promise` pool | `await pool.query(...)` with `?` placeholders |
+| Database | MySQL via `mysql2` | Raw `pool.query(...)` in steps 00-12 |
+| ORM | `sequelize` (steps 13-16) | Models instead of SQL strings, same API |
 | Auth | Phone + OTP, then JWT (HS256, 1h) | Passwordless |
 | OTP storage | HMAC-SHA256 hash, never the plain code | A DB leak does not leak codes |
 | Config | `dotenv` | Secrets stay out of git |

@@ -1,6 +1,6 @@
 # 🏁 Final reference
 
-[⬅ Index](./README.md) · [⬅ Prev](./12-mount-posts-router.md)
+[⬅ Index](./README.md) · [⬅ Prev](./16-orm-errors-and-wiring.md)
 
 One page with everything you need once all steps are done.
 
@@ -21,10 +21,16 @@ simple-weblog/
     ├── app.js                # builds the Express app
     ├── server.js             # env check, DB check, listen
     ├── config/
-    │   └── db.js             # mysql2 pool
+    │   └── db.js             # Sequelize instance
+    ├── models/
+    │   ├── index.js          # associations + exports
+    │   ├── User.js
+    │   ├── Otp.js
+    │   ├── Post.js
+    │   └── Comment.js
     ├── middleware/
     │   ├── auth.js           # authenticate, requireAdmin
-    │   ├── errorHandler.js   # JSON error responses
+    │   ├── errorHandler.js   # JSON error responses (Sequelize-aware)
     │   └── notFound.js       # 404
     └── routes/
         ├── auth.js           # request-otp, verify-otp, me
@@ -82,7 +88,7 @@ OTP_SECRET=                 # a different long random string
 
 | Variable | Required at startup | Used by |
 | --- | :-: | --- |
-| `DB_HOST`, `DB_USER`, `DB_NAME` | ✅ | `config/db.js` |
+| `DB_HOST`, `DB_USER`, `DB_NAME` | ✅ | `config/db.js` (Sequelize) |
 | `DB_PASSWORD` | no | `config/db.js` |
 | `JWT_SECRET` | ✅ | sign and verify tokens |
 | `OTP_SECRET` | ✅ | HMAC of OTP codes |
@@ -141,7 +147,7 @@ echo "8) comment tree";  curl -s $BASE/posts/1/comments; echo
 - [x] One generic error for every OTP failure
 - [x] JWT algorithm pinned to HS256 on both sign and verify
 - [x] Role read from the DB at login, never from client input
-- [x] All SQL values passed as `?` placeholders
+- [x] No SQL built from user input: ORM `where` objects (or `?` placeholders in the raw-SQL steps)
 - [x] `author_id` / `user_id` always taken from the token
 - [x] Ownership enforced inside the SQL `WHERE`
 - [x] SQL error text never sent to the client
@@ -155,8 +161,8 @@ Things the commits left behind. None of them stop the project from running.
 
 | # | Where | Issue | Suggested fix |
 | :-: | --- | --- | --- |
-| 1 | `src/app.js` | Posts router mount is **uncommitted** | Commit it (step 12) |
-| 2 | `src/routes/posts.js` | `express()` used instead of `express.Router()` | Use `express.Router()` |
+| 1 | `src/app.js` | Posts router mount was uncommitted | ✅ Fixed in the ORM commit (step 12 and 16) |
+| 2 | `src/routes/posts.js` | `express()` used instead of `express.Router()` | ✅ Fixed in step 15 |
 | 3 | `.env.example` | Missing `OTP_SECRET` (and `NODE_ENV`) | Add them |
 | 4 | `src/app.js` | Unused `http` import and `PORT`. `dotenv.config()` placed mid-file | Remove. Keep dotenv only in `server.js` |
 | 5 | `src/middleware/auth.js` | `next()` inside `try`: a downstream sync throw becomes a 401 | Move `next()` after the `try/catch` |
@@ -188,7 +194,7 @@ c5eade3  chore: use node --watch in dev script
 6c2750b  feat(auth): add authenticate and requireAdmin middlewares with /me route
 cebd2ce  feat(posts): add pagination and search to list endpoint
 a125b74  feat(comments): add nested comments support for posts
-(working tree)  mount posts router in app.js
+<next>   refactor: migrate data layer from raw mysql2 queries to Sequelize (steps 12-16)
 ```
 
 Replay any step's exact diff:

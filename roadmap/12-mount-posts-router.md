@@ -1,22 +1,20 @@
 # 12 · Mount the posts router
 
-[⬅ Index](./README.md) · [⬅ Prev](./11-nested-comments.md) · [Next ➡ Final reference](./99-final-reference.md)
+[⬅ Index](./README.md) · [⬅ Prev](./11-nested-comments.md) · [Next ➡ 13 ORM setup](./13-orm-setup-and-models.md)
 
 ## 🎯 Goal
 
 Plug `routes/posts.js` into the app so `/posts/...` actually responds.
 
-## 🔖 Commits
+## 🔖 Commit
 
-> [!WARNING]
-> **Not committed yet.** This change was sitting in the working tree (`M src/app.js`) when this roadmap was written. The posts commits added `routes/posts.js` but never touched `app.js`, so until this is committed, `/posts` returns 404.
-
-Suggested commit:
-
-```bash
-git add src/app.js
-git commit -m "feat(posts): mount posts router at /posts"
-```
+> [!NOTE]
+> The earlier posts commits added `routes/posts.js` but never touched `app.js`, so on their own `/posts` returns 404. This mount line was committed together with the ORM migration ([step 16](./16-orm-errors-and-wiring.md)). If you follow the raw-SQL steps only, commit it yourself:
+>
+> ```bash
+> git add src/app.js
+> git commit -m "feat(posts): mount posts router at /posts"
+> ```
 
 ## 🗂️ Files
 
