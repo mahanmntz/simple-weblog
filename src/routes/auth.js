@@ -1,9 +1,19 @@
 const express = require('express');
 const crypto = require('crypto');
-const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
+const { Op, literal } = require('sequelize');
+const { User, Otp } = require('../models');
+const { authenticate } = require('../middleware/auth');
+
 const router = express.Router();
-const { authenticate }  = require('../middleware/auth');
+
+function hashCode(code) {
+    return crypto
+        .createHmac('sha256', process.env.OTP_SECRET)
+        .update(String(code))
+        .digest('hex');
+}
+
 router.post('/request-otp', async (req, res) => {
     const { phone } = req.body;
 
@@ -13,31 +23,28 @@ router.post('/request-otp', async (req, res) => {
     }
 
     // 2. Cooldown check: prevent sending another code within 60 seconds
-    const [recentOtps] = await pool.query(
-        `SELECT created_at FROM otps 
-         WHERE phone = ? AND created_at > NOW() - INTERVAL 60 SECOND 
-         ORDER BY id DESC LIMIT 1`,
-        [phone]
-    );
+    const recent = await Otp.findOne({
+        where: {
+            phone,
+            created_at: { [Op.gt]: literal('NOW() - INTERVAL 60 SECOND') },
+        },
+        order: [['id', 'DESC']],
+    });
 
-    if (recentOtps.length > 0) {
+    if (recent) {
         res.set('Retry-After', '60');
         return res.status(429).json({ error: 'Please wait before requesting another code' });
     }
 
     // 3. Generate a 6-digit random code and calculate its HMAC hash
     const code = String(crypto.randomInt(100000, 1000000));
-    const codeHash = crypto
-        .createHmac('sha256', process.env.OTP_SECRET)
-        .update(code)
-        .digest('hex');
 
     // 4. Save hash to database with 120s expiration
-    await pool.query(
-        `INSERT INTO otps (phone, code_hash, expires_at) 
-         VALUES (?, ?, NOW() + INTERVAL 120 SECOND)`,
-        [phone, codeHash]
-    );
+    await Otp.create({
+        phone,
+        code_hash: hashCode(code),
+        expires_at: literal('NOW() + INTERVAL 120 SECOND'),
+    });
 
     // 5. In development, log the plain code to test easily
     if (process.env.NODE_ENV === 'development') {
@@ -55,64 +62,49 @@ router.post('/verify-otp', async (req, res) => {
         return res.status(400).json({ error: 'Invalid or expired code' });
     }
 
-    // 2. Consume one attempt atomically (max 5 attempts, must be active and unused)
-    const [updateResult] = await pool.query(
-        `UPDATE otps 
-         SET attempts = attempts + 1 
-         WHERE phone = ? AND used_at IS NULL AND expires_at > NOW() AND attempts < 5 
-         ORDER BY id DESC LIMIT 1`,
-        [phone]
-    );
+    // 2. Find the latest active OTP
+    const otp = await Otp.findOne({
+        where: {
+            phone,
+            used_at: null,
+            expires_at: { [Op.gt]: literal('NOW()') },
+        },
+        order: [['id', 'DESC']],
+    });
 
-    if (updateResult.affectedRows === 0) {
+    if (!otp) {
         return res.status(400).json({ error: 'Invalid or expired code' });
     }
 
-    // 3. Fetch the latest active OTP hash
-    const [rows] = await pool.query(
-        `SELECT id, code_hash FROM otps 
-         WHERE phone = ? AND used_at IS NULL AND expires_at > NOW() 
-         ORDER BY id DESC LIMIT 1`,
-        [phone]
+    // 3. Consume one attempt atomically (max 5 attempts)
+    const [consumed] = await Otp.update(
+        { attempts: literal('attempts + 1') },
+        { where: { id: otp.id, used_at: null, attempts: { [Op.lt]: 5 } } }
     );
 
-    if (rows.length === 0) {
+    if (consumed === 0) {
         return res.status(400).json({ error: 'Invalid or expired code' });
     }
-
-    const otp = rows[0];
 
     // 4. Compare HMAC hash
-    const inputHash = crypto
-        .createHmac('sha256', process.env.OTP_SECRET)
-        .update(String(code))
-        .digest('hex');
-
-    if (inputHash !== otp.code_hash) {
+    if (hashCode(code) !== otp.code_hash) {
         return res.status(400).json({ error: 'Invalid or expired code' });
     }
 
     // 5. Mark OTP as used so it cannot be used again
-    await pool.query(
-        `UPDATE otps SET used_at = NOW() WHERE id = ? AND used_at IS NULL`,
-        [otp.id]
+    const [marked] = await Otp.update(
+        { used_at: literal('NOW()') },
+        { where: { id: otp.id, used_at: null } }
     );
 
-    // 6. Ensure user exists (insert if new, ignore if existing)
-    await pool.query(
-        `INSERT INTO users (phone) VALUES (?) 
-         ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`,
-        [phone]
-    );
+    if (marked === 0) {
+        return res.status(400).json({ error: 'Invalid or expired code' });
+    }
 
-    // 7. Get user id and role strictly from DB
-    const [users] = await pool.query(
-        `SELECT id, role FROM users WHERE phone = ?`,
-        [phone]
-    );
-    const user = users[0];
+    // 6. Find or create the user, role comes strictly from the DB
+    const [user] = await User.findOrCreate({ where: { phone } });
 
-    // 8. Sign JWT (HS256, 1h)
+    // 7. Sign JWT (HS256, 1h)
     const token = jwt.sign(
         { sub: user.id, role: user.role },
         process.env.JWT_SECRET,
@@ -121,7 +113,6 @@ router.post('/verify-otp', async (req, res) => {
 
     res.json({ token });
 });
-
 
 router.get('/me', authenticate, (req, res) => {
     res.json({ user: req.user });
